@@ -99,6 +99,8 @@ class PowerUps:
     HYDRAULICS = cairo.ImageSurface.create_from_png("./Hydraulics.png")
     CALL_911 = cairo.ImageSurface.create_from_png("./911.png")
     SHRINK = cairo.ImageSurface.create_from_png("./shrink.png")
+    PHASER_FIRE = cairo.ImageSurface.create_from_png("./phaser_fire.png")
+    PHASER = cairo.ImageSurface.create_from_png("./phaser.png")
 
 class SmokeEmitter(ParticleManager.ParticleEmitter):
     def __init__(self, x, y, speed_x, speed_y):
@@ -108,7 +110,7 @@ class SmokeEmitter(ParticleManager.ParticleEmitter):
             particle.set_properties(self.x, self.y, 500, math.pi/2, self.speed_x + random.randrange(-5, 5)*Speed.ONE_KMH, self.speed_y + random.randrange(-5, 5)*Speed.ONE_KMH,  self.size, self.shape, False)
 
 class PointsEmitter(ParticleManager.ParticleEmitter):
-    def __init__(self, x, y, speed_x, speed_y, size=100, shape=ParticleManager.Particles.POINTS, num_of_particles=3):
+    def __init__(self, x, y, speed_x, speed_y, size=100, shape=ParticleManager.Particles.POINTS, rate=0.1, num_of_particles=3):
         super(PointsEmitter, self).__init__(x, y, speed_x, speed_y, size, shape, num_of_particles , 0.1)
     def set_particles(self):
         for particle in self.particles:
@@ -116,19 +118,19 @@ class PointsEmitter(ParticleManager.ParticleEmitter):
 
 class Minus10Points(PointsEmitter):
     def __init__(self, x, y, speed_x, speed_y, size=100, shape=ParticleManager.Particles.POINTS):
-        super(Minus10Points, self).__init__(x, y, speed_x, speed_y, size, shape)
+        super(Minus10Points, self).__init__(x, y, speed_x, speed_y, size, shape, 0.01)
     def set_particles(self):
         for particle in self.particles:
-            particle.set_properties(self.x, self.y, 700, 0, self.speed_x + random.randrange(-5, 5)*Speed.ONE_KMH, self.speed_y + random.randrange(-5, 5)*Speed.ONE_KMH,  self.size, self.shape, True)
+            particle.set_properties(self.x, self.y, 800, 0, self.speed_x + random.randrange(-5, 5)*Speed.ONE_KMH, self.speed_y + random.randrange(-5, 5)*Speed.ONE_KMH,  self.size, self.shape, True)
 
 
 class Plus100Points(PointsEmitter):
     def __init__(self):
-        super(Plus100Points, self).__init__(50, 130, Speed.MAX_KMH*Speed.ONE_KMH, 0.1, 200, ParticleManager.Particles.PLUS_100_POINTS, 1)
+        super(Plus100Points, self).__init__(50, 130, Speed.MAX_KMH*Speed.ONE_KMH, 0.1, 200, ParticleManager.Particles.PLUS_100_POINTS, 1, 1)
 
 class Minus100Points(PointsEmitter):
     def __init__(self):
-        super(Minus100Points, self).__init__(50, 130, Speed.MAX_KMH*Speed.ONE_KMH, 0.1, 400, ParticleManager.Particles.MINUS_100_POINTS, 1)
+        super(Minus100Points, self).__init__(50, 130, Speed.MAX_KMH*Speed.ONE_KMH, 0.1, 400, ParticleManager.Particles.MINUS_100_POINTS, 1, 1)
 
 class MessageEmitter(ParticleManager.ParticleEmitter):
     def __init__(self, x, y, shape):
@@ -220,11 +222,14 @@ class Player(Car):
         self.hydraulics = False
         self.shield = False
         self.shrunk = False
+        self.fire_phaser = False
+        self.phaser_alpha = 0
+        self.phaser_gaining_intensity = True
 
     def update(self, time_delta):
         for i in range(self.score_hundreds - int(self.score / 100)):
             ParticleManager.add_new_emmitter(Minus100Points())
-        self.score += 0.02 * time_delta
+        self.score += 0.01 * time_delta
         old_score_hundreds = self.score_hundreds
         self.score_hundreds = int(self.score / 100)
         for i in range(self.score_hundreds-old_score_hundreds):
@@ -244,6 +249,19 @@ class Player(Car):
             displacement = (Speed.MAX_SPEED - self.speed)*time_delta
             self.horizontal_position -= displacement if (self.horizontal_position - displacement) >= 0 else 0 
 
+        if self.fire_phaser:
+            if self.phaser_gaining_intensity:
+                self.phaser_alpha += time_delta*0.005
+                if self.phaser_alpha >= 1:
+                    self.phaser_alpha = 1
+                    self.phaser_gaining_intensity = False
+            else:
+                self.phaser_alpha -= time_delta*0.005
+                if self.phaser_alpha <= 0:
+                    self.phaser_alpha = 0
+                    self.phaser_gaining_intensity = True
+                    self.fire_phaser = False
+
         if(self.powerUpTimeOut > 0):
             self.powerUpTimeOut -= time_delta
         if self.powerUpTimeOut <= 0:
@@ -253,6 +271,12 @@ class Player(Car):
     def draw(self, cr):
         cr.save()
         cr.translate(self.horizontal_position, self.vertical_position - self.height_offset);
+        if self.fire_phaser:
+            cr.save()
+            cr.translate(10, self.height_offset - 8)
+            cr.set_source_surface(PowerUps.PHASER_FIRE, 0, 0)
+            cr.paint_with_alpha(self.phaser_alpha)
+            cr.restore()
         if self.draw_rotation:
             x = self.width/2.0
             y = self.height/2.0
@@ -519,13 +543,15 @@ class Truck(NPV):
         super(Truck, self).update(time_delta, player_speed)
 
     def dropPowerUp(self):
-        rand = random.randrange(4)
+        rand = random.randrange(5)
         if rand == 0:
             Call911(self.game).drop(self.horizontal_position, self.vertical_position-self.height_offset)
         elif rand == 1:
             Hydraulics(self.game).drop(self.horizontal_position, self.vertical_position-self.height_offset)
         elif rand == 2:
             Shrink(self.game).drop(self.horizontal_position, self.vertical_position-self.height_offset)
+        elif rand == 3:
+            Phaser(self.game).drop(self.horizontal_position, self.vertical_position-self.height_offset)
         else:
             Shield(self.game).drop(self.horizontal_position, self.vertical_position-self.height_offset)
 
@@ -670,6 +696,14 @@ class Shrink(PowerUp):
         self.player.height = self.player.height / 2
         self.player.height_offset = self.player.height_offset / 2
 
+class Phaser(PowerUp):
+    def __init__(self, game, player=None):
+        super(Phaser, self).__init__(game, player)
+        self.icon = PowerUps.PHASER
+
+    def applyPowerUp(self):
+        self.player.fire_phaser = True
+
 class Game(Gtk.Window):
 
     def __init__(self):
@@ -770,7 +804,7 @@ class Game(Gtk.Window):
         for player in self.players:
             if player.hydraulics:
                 continue
-            for npv in self.npvs:
+            for npv in self.npvs[:]:
                 if self.check_collision(player.horizontal_position, player.vertical_position, player.width, player.height, npv.horizontal_position, npv.vertical_position, npv.width, npv.height):
                     npv.wobble()
                     if not player.shield:
@@ -782,6 +816,10 @@ class Game(Gtk.Window):
                     if not npv.crashed:
                         npv.crashed = True
                         ParticleManager.add_new_emmitter(SmokeEmitter( npv.horizontal_position, npv.vertical_position-npv.height_offset, -npv.speed, 0))
+                if player.fire_phaser:
+                    if self.check_collision(player.horizontal_position, player.vertical_position, RoadPositions.COLLISION_HORIZON, player.height, npv.horizontal_position, npv.vertical_position, npv.width, npv.height):
+                        ParticleManager.add_new_emmitter(SmokeEmitter( npv.horizontal_position, npv.vertical_position-npv.height_offset, 0, 0))
+                        self.npvs.remove(npv)
             if player.crash_handler != None:
                 player.crash_handler.update(time_delta)
 
@@ -876,8 +914,8 @@ class Game(Gtk.Window):
                 elif event.keyval >= KeyboardKeys.KEY_ONE and event.keyval <= KeyboardKeys.KEY_FIVE:
                     self.players[0].usePowerUp(event.keyval-KeyboardKeys.KEY_TO_NUM)
                 elif event.keyval == 115:
-                    Hydraulics(self, self.players[0]).execute()
-    
+                    self.players[0].fire_phaser = True
+
     def on_key_release(self, wid, event):
         if event.type == Gdk.EventType.KEY_RELEASE:
             if len(self.players) > 0:
