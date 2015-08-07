@@ -216,7 +216,7 @@ class Player(Car):
     def update(self, time_delta):
         for i in range(self.score_hundreds - int(self.score / 100)):
             ParticleManager.add_new_emmitter(Minus100Points())
-        self.score += 0.03 * time_delta
+        self.score += 0.02 * time_delta
         old_score_hundreds = self.score_hundreds
         self.score_hundreds = int(self.score / 100)
         for i in range(self.score_hundreds-old_score_hundreds):
@@ -751,8 +751,10 @@ class Game(Gtk.Window):
             else:
                 car1.hit_from_behind()
         else:
-            if not car1.crashed:
+            if (not car1.crashed) and (not car2.crashed):
                 ParticleManager.add_new_emmitter(SmokeEmitter(car1.horizontal_position, car1.vertical_position-car1.height_offset, -car1.speed, 0))
+                car1.crashed = True
+                car2.crashed = True
             car1.wobble()
             car2.wobble()
 
