@@ -11,5 +11,3 @@
 - Multiplayer
 
 - Trucks that randomly drop obstacles
-
-- Rewrite Code so that the player.s car and npv inherit from a Car class

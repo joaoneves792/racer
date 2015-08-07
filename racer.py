@@ -3,6 +3,8 @@ import cairo
 import random
 import math
 
+import ParticleManager
+
 # 1 meter = 36 pixels !!
 
 class Window:
@@ -46,16 +48,6 @@ class SkidMarks:
     SKID_LEFT = cairo.ImageSurface.create_from_png("skid_left.png")
     SKID_RIGHT= cairo.ImageSurface.create_from_png("skid_right.png")
 
-class Particles:
-    SMOKE = cairo.ImageSurface.create_from_png("./smoke_particle.png")
-    FIRE = cairo.ImageSurface.create_from_png("./fire.png")
-    POINTS = cairo.ImageSurface.create_from_png("./points.png")
-    PLUS_100_POINTS = cairo.ImageSurface.create_from_png("./plus100points.png")
-    MINUS_100_POINTS = cairo.ImageSurface.create_from_png("./minus100points.png")
-    MAX_EMMITTERS = 10 
-    POOLED_PARTICLES = 200
-    WIDTH = 64
-    HEIGHT = 64
 
 class CarModels:
     GALLARDO = cairo.ImageSurface.create_from_png("gallardo.png")
@@ -82,122 +74,27 @@ class CarModels:
     AVAILABLE_CARS = ( CORVETTE, CHARGER, GOLF, INTEGRA, SUPRA, F430, CCX, DB9, F1, SUPERLEGGERA, GT, LP570, MURCIELAGO, R8, RS4, SL65, SLR )
     EMERGENCY_CARS = ( AMBULANCE, COP )
 
-class Particle:
-    def __init__(self, x=0, y=0, life=0, angle=0, speed_x=0, speed_y=0, size=0, shape=None, deflate=True):
-        self.set_properties(x, y, life, angle, speed_x, speed_y, size, shape, deflate)
-
-    def set_properties(self, x, y, life, angle, speed_x, speed_y, size, shape, deflate):
-        self.x = x
-        self.y = y
-        self.life = life
-        self.original_life = life
-        self.angle = angle
-        self.speed_x = speed_x
-        self.speed_y = speed_y
-        self.size = size
-        self.original_size = size
-        self.shape = shape
-        self.alpha = 1
-        self.deflate = deflate
-
-    def update(self, time_delta):
-        self.life -= time_delta
-        if self.life > 0:
-            age_ratio = float(self.life) / float(self.original_life)
-            if self.deflate:
-                self.size = self.original_size * age_ratio if age_ratio > 0.5 else self.size
-            else:
-                self.size = self.original_size / age_ratio if age_ratio > 0.5 else self.size
-            self.alpha = age_ratio
-
-            self.x += self.speed_x * time_delta
-            self.y += self.speed_y * time_delta
-
-    def draw(self, cr):
-        cr.save()
-        cr.translate(self.x, self.y)
-        cr.scale(self.size/Particles.WIDTH , self.size/ Particles.HEIGHT)
-        cr.set_source_surface(self.shape, 0, 0)
-        cr.paint_with_alpha(self.alpha)
-        cr.restore()
-
-class ParticlePool:
-    def __init__(self, pool_size):
-        self.pool_size = pool_size
-        self.pool = [ Particle() for i in range(pool_size) ] 
-        self.ready_particle_count = pool_size
-
-    def request_particle(self):
-        if self.ready_particle_count == 0:
-            print("Available particles limit EXCEEDED!!!")
-            return None
-        particle = self.pool[self.ready_particle_count-1]
-        self.ready_particle_count -= 1
-        return particle
-
-    def return_particle(self, returning_particle):
-        moved_particle = self.pool[self.ready_particle_count]
-        position_to_move_into = self.pool.index(returning_particle)
-        self.pool[self.ready_particle_count] = returning_particle
-        self.pool[position_to_move_into] = moved_particle
-        self.ready_particle_count += 1
-
-class ParticleEmitter:
-    def __init__(self, pool, num_of_particles, rate):
-        self.pool = pool
-        self.particle_count = num_of_particles
-        self.particles = [self.pool.request_particle() for i in range(num_of_particles)]
-        self.rate = rate
-        self.done = False
-
-    def update(self, time_delta):
-        live_particles_count = 0
-        new_emissions = self.rate*time_delta
-        newly_emitted = 0
+class SmokeEmitter(ParticleManager.ParticleEmitter):
+    def __init__(self, x, y, speed_x, speed_y):
+        super(SmokeEmitter, self).__init__(x, y, speed_x, speed_y, 25, ParticleManager.Particles.SMOKE, 20, 0.1)
+    def set_particles(self):
         for particle in self.particles:
-            if particle.life > 0 and particle.life < particle.original_life:
-                live_particles_count += 1
-                particle.update(time_delta)
-            elif particle.life > 0 and newly_emitted < new_emissions:
-                live_particles_count += 1
-                particle.update(time_delta)
-                newly_emitted += 1
+            particle.set_properties(self.x, self.y, 500, math.pi/2, self.speed_x + random.randrange(-5, 5)*Speed.ONE_KMH, self.speed_y + random.randrange(-5, 5)*Speed.ONE_KMH,  self.size, self.shape, False)
 
-        if live_particles_count == 0:
-            for particle in self.particles:
-                self.pool.return_particle(particle)
-            self.done = True
-
-    def isDone(self):
-        return self.done
-
-    def draw(self, cr):
-        if self.done:
-            return
+class PointsEmitter(ParticleManager.ParticleEmitter):
+    def __init__(self, x, y, speed_x, speed_y, size=100, shape=ParticleManager.Particles.POINTS):
+        super(PointsEmitter, self).__init__(x, y, speed_x, speed_y, size, shape, 1, 1)
+    def set_particles(self):
         for particle in self.particles:
-            if particle.life > 0:
-                particle.draw(cr)
- 
-
-class SmokeEmitter(ParticleEmitter):
-    def __init__(self, pool, x, y, speed_x, speed_y):
-        super(SmokeEmitter, self).__init__(pool, 20, 0.1)
-        for particle in self.particles:
-            particle.set_properties(x, y, 500, math.pi/2, speed_x + random.randrange(-5, 5)*Speed.ONE_KMH, speed_y + random.randrange(-5, 5)*Speed.ONE_KMH,  25, Particles.SMOKE, False)
-
-class PointsEmitter(ParticleEmitter):
-    def __init__(self, pool, x, y, speed_x, speed_y, size=100, shape=Particles.POINTS):
-        super(PointsEmitter, self).__init__(pool, 1, 1)
-        for particle in self.particles:
-            particle.set_properties(x, y, 700, 0, speed_x + random.randrange(-5, 5)*Speed.ONE_KMH, speed_y + random.randrange(-5, 5)*Speed.ONE_KMH,  size, shape, True)
+            particle.set_properties(self.x, self.y, 700, 0, self.speed_x + random.randrange(-5, 5)*Speed.ONE_KMH, self.speed_y + random.randrange(-5, 5)*Speed.ONE_KMH,  self.size, self.shape, True)
 
 class Plus100Points(PointsEmitter):
-    def __init__(self, pool):
-        super(Plus100Points, self).__init__(pool, 50, 130, Speed.MAX_KMH*Speed.ONE_KMH, 0.1, 200, Particles.PLUS_100_POINTS)
+    def __init__(self):
+        super(Plus100Points, self).__init__(50, 130, Speed.MAX_KMH*Speed.ONE_KMH, 0.1, 200, ParticleManager.Particles.PLUS_100_POINTS)
 
 class Minus100Points(PointsEmitter):
-    def __init__(self, pool):
-        super(Minus100Points, self).__init__(pool, 50, 130, Speed.MAX_KMH*Speed.ONE_KMH, 0.1, 400, Particles.MINUS_100_POINTS)
+    def __init__(self):
+        super(Minus100Points, self).__init__(50, 130, Speed.MAX_KMH*Speed.ONE_KMH, 0.1, 400, ParticleManager.Particles.MINUS_100_POINTS)
 
 class Road():
     def __init__(self, x=0):
@@ -265,16 +162,14 @@ class Player(Car):
         self.score = 0
         self.score_hundreds = 0
 
-    def update(self, time_delta, particleEmitters):
+    def update(self, time_delta):
         for i in range(self.score_hundreds - int(self.score / 100)):
-            if len(particleEmitters) < Particles.MAX_EMMITTERS:
-                particleEmitters.append(Minus100Points(self.particlePool))
+            ParticleManager.add_new_emmitter(Minus100Points())
         self.score += 0.03 * time_delta
         old_score_hundreds = self.score_hundreds
         self.score_hundreds = int(self.score / 100)
         for i in range(self.score_hundreds-old_score_hundreds):
-            if len(particleEmitters) < Particles.MAX_EMMITTERS:
-                particleEmitters.append(Plus100Points(self.particlePool))
+            ParticleManager.add_new_emmitter(Plus100Points())
         #Adjust postition to user input
         if self.up and self.vertical_position > RoadPositions.UPPER_LIMIT:
             self.vertical_position -= 5
@@ -524,18 +419,16 @@ class PlayerCrashHandler:
         cr.paint()
         cr.restore()
 
-
 class Game(Gtk.Window):
 
     def __init__(self):
         super(Game, self).__init__()
         self.init_ui()
         self.road = Road(0)
+        self.speed = Speed.MAX_SPEED
         self.last_update_timestamp = -1
         self.npvs = []
         self.spawn_delay = 0
-        self.particlePool = ParticlePool(Particles.POOLED_PARTICLES)
-        self.particleEmitters = []
         self.players = []
 
         self.players.append(Player(CarModels.GALLARDO, 0, RoadPositions.MIDDLE_LANE, Speed.MAX_KMH*Speed.ONE_KMH))
@@ -588,7 +481,7 @@ class Game(Gtk.Window):
         self.road.advance(time_delta*Speed.MAX_SPEED) #self.speed)
 
         for player in self.players:
-            player.update(time_delta, self.particleEmitters)
+            player.update(time_delta)
 
         #Update NPVs
         if self.spawn_delay > 0:
@@ -615,9 +508,8 @@ class Game(Gtk.Window):
             for npv in self.npvs:
                 if self.check_collision(player.horizontal_position, player.vertical_position, player.width, player.height, npv.horizontal_position, npv.vertical_position, npv.width, npv.height):
                     npv.wobble()
-                    if len(self.particleEmitters) < Particles.MAX_EMMITTERS:
-                        self.particleEmitters.append(SmokeEmitter(self.particlePool, npv.horizontal_position, npv.vertical_position-npv.height_offset, -npv.speed, 0))
-                        self.particleEmitters.append(PointsEmitter(self.particlePool, player.horizontal_position, player.vertical_position, -player.speed, 0.2))
+                    ParticleManager.add_new_emmitter(SmokeEmitter( npv.horizontal_position, npv.vertical_position-npv.height_offset, -npv.speed, 0))
+                    ParticleManager.add_new_emmitter(PointsEmitter( player.horizontal_position, player.vertical_position, -player.speed, 0.2))
                     player.score -= 10
                     if(player.crash_handler == None):
                         player.crash_handler = PlayerCrashHandler(player)
@@ -631,10 +523,7 @@ class Game(Gtk.Window):
                     self.npv_collision(self.npvs[i], self.npvs[j])
 
         #Update Particle Emitters
-        for pe in self.particleEmitters[:]:
-            pe.update(time_delta)
-            if pe.isDone():
-                self.particleEmitters.remove(pe)
+        ParticleManager.update(time_delta)
 
         self.last_update_timestamp = current_time
         self.darea.queue_draw()
@@ -657,8 +546,7 @@ class Game(Gtk.Window):
             else:
                 car1.hit_from_behind()
         else:
-            if len(self.particleEmitters) < 5:
-                self.particleEmitters.append(SmokeEmitter(self.particlePool, car1.horizontal_position, car1.vertical_position-car1.height_offset, -car1.speed, 0))
+            ParticleManager.add_new_emmitter(SmokeEmitter(car1.horizontal_position, car1.vertical_position-car1.height_offset, -car1.speed, 0))
             car1.wobble()
             car2.wobble()
 
@@ -673,35 +561,36 @@ class Game(Gtk.Window):
         for player in self.players:
             player.draw(cr)
 
-        for pe in self.particleEmitters:
-            pe.draw(cr)
+        ParticleManager.draw(cr)
 
         for player in self.players:
             player.draw_score(cr)
 
     def on_key_press(self, wid, event):
         if event.type == Gdk.EventType.KEY_PRESS:
-            if event.keyval == KeyboardKeys.KEY_LEFT: 
-                self.braking = True
-            elif event.keyval == KeyboardKeys.KEY_RIGHT:
-                self.forward = True
-            elif event.keyval == KeyboardKeys.KEY_UP: 
-                self.up = True
-            elif event.keyval == KeyboardKeys.KEY_DOWN:
-                self.down = True
-            elif event.keyval == 115:
-                pass#self.particleEmitters.append(FireEmitter(self.particlePool, self.horizontal_position, self.vertical_position-self.height_offset, -self.speed, 0))
+            if len(self.players) > 0:
+                if event.keyval == KeyboardKeys.KEY_LEFT: 
+                    self.players[0].braking = True
+                elif event.keyval == KeyboardKeys.KEY_RIGHT:
+                    self.players[0].forward = True
+                elif event.keyval == KeyboardKeys.KEY_UP: 
+                    self.players[0].up = True
+                elif event.keyval == KeyboardKeys.KEY_DOWN:
+                    self.players[0].down = True
+                elif event.keyval == 115:
+                    pass
     
     def on_key_release(self, wid, event):
         if event.type == Gdk.EventType.KEY_RELEASE:
-            if event.keyval == KeyboardKeys.KEY_LEFT:
-                self.braking = False
-            elif event.keyval == KeyboardKeys.KEY_RIGHT:
-                self.forward = False
-            elif event.keyval == KeyboardKeys.KEY_UP: 
-                self.up = False
-            elif event.keyval == KeyboardKeys.KEY_DOWN:
-                self.down = False
+            if len(self.players) > 0:
+                if event.keyval == KeyboardKeys.KEY_LEFT:
+                    self.players[0].braking = False
+                elif event.keyval == KeyboardKeys.KEY_RIGHT:
+                    self.players[0].forward = False
+                elif event.keyval == KeyboardKeys.KEY_UP: 
+                    self.players[0].up = False
+                elif event.keyval == KeyboardKeys.KEY_DOWN:
+                    self.players[0].down = False
 
 app = Game()
 Gtk.main()
