@@ -17,7 +17,7 @@ class Window:
     INVENTORY_X = 50
     INVENTORY_Y = 450
     
-    VERSION = "v1.6"
+    VERSION = "v1.7"
 
 class KeyboardKeys:
     KEY_LEFT  = 65361
@@ -29,8 +29,8 @@ class KeyboardKeys:
     KEY_TO_NUM = KEY_ONE - 1
 
 class RoadPositions:
-    UPPER_LIMIT = 135
-    LOWER_LIMIT = 375
+    UPPER_LIMIT = 105
+    LOWER_LIMIT = 404
     FORWARD_LIMIT = 912
     REAR_LIMIT = 0
     LEFT_LANE = 165
@@ -98,7 +98,7 @@ class PowerUps:
     ENERGY_SHIELD_HEIGHT = cairo.ImageSurface.get_height(ENERGY_SHIELD)
     HYDRAULICS = cairo.ImageSurface.create_from_png("./Hydraulics.png")
     CALL_911 = cairo.ImageSurface.create_from_png("./911.png")
-
+    SHRINK = cairo.ImageSurface.create_from_png("./shrink.png")
 
 class SmokeEmitter(ParticleManager.ParticleEmitter):
     def __init__(self, x, y, speed_x, speed_y):
@@ -219,6 +219,7 @@ class Player(Car):
         self.powerUpTimeOut = 0
         self.hydraulics = False
         self.shield = False
+        self.shrunk = False
 
     def update(self, time_delta):
         for i in range(self.score_hundreds - int(self.score / 100)):
@@ -229,9 +230,9 @@ class Player(Car):
         for i in range(self.score_hundreds-old_score_hundreds):
             ParticleManager.add_new_emmitter(Plus100Points())
         #Adjust postition to user input
-        if self.up and self.vertical_position > RoadPositions.UPPER_LIMIT:
+        if self.up and self.vertical_position > RoadPositions.UPPER_LIMIT + self.height_offset:
             self.vertical_position -= 5
-        elif self.down and self.vertical_position < RoadPositions.LOWER_LIMIT:
+        elif self.down and self.vertical_position < RoadPositions.LOWER_LIMIT - self.height_offset:
             self.vertical_position += 5
         
         if self.forward and self.horizontal_position < RoadPositions.FORWARD_LIMIT:
@@ -260,6 +261,8 @@ class Player(Car):
             cr.translate(-x,-y) 
         if self.hydraulics:
             cr.scale(1.2, 1.2)
+        if self.shrunk:
+            cr.scale(1, 0.5)
         cr.set_source_surface(self.model, 0, 0)
         cr.paint()
         if self.shield:
@@ -337,6 +340,9 @@ class Player(Car):
     def disablePowerUps(self):
         self.hydraulics = False
         self.shield = False
+        self.shrunk = False
+        self.height = cairo.ImageSurface.get_height(self.model)
+        self.height_offset = self.height/2
 
 class NPV(Car): #NPV - Non Player Vehicle
     def __init__(self, model, y, speed):
@@ -513,11 +519,13 @@ class Truck(NPV):
         super(Truck, self).update(time_delta, player_speed)
 
     def dropPowerUp(self):
-        rand = random.randrange(3)
+        rand = random.randrange(4)
         if rand == 0:
             Call911(self.game).drop(self.horizontal_position, self.vertical_position-self.height_offset)
         elif rand == 1:
             Hydraulics(self.game).drop(self.horizontal_position, self.vertical_position-self.height_offset)
+        elif rand == 2:
+            Shrink(self.game).drop(self.horizontal_position, self.vertical_position-self.height_offset)
         else:
             Shield(self.game).drop(self.horizontal_position, self.vertical_position-self.height_offset)
 
@@ -652,6 +660,16 @@ class Shield(PowerUp):
     def applyPowerUp(self):
         self.player.shield = True
 
+class Shrink(PowerUp):
+    def __init__(self, game, player=None):
+        super(Shrink, self).__init__(game, player)
+        self.icon = PowerUps.SHRINK
+
+    def applyPowerUp(self):
+        self.player.shrunk = True
+        self.player.height = self.player.height / 2
+        self.player.height_offset = self.player.height_offset / 2
+
 class Game(Gtk.Window):
 
     def __init__(self):
@@ -668,10 +686,10 @@ class Game(Gtk.Window):
 
         self.players.append(Player(CarModels.GALLARDO, 0, RoadPositions.MIDDLE_LANE, Speed.MAX_KMH*Speed.ONE_KMH))
 
-        self.players[0].addPowerUp(Call911(self, self.players[0]))
-        self.players[0].addPowerUp(Hydraulics(self, self.players[0]))
-        self.players[0].addPowerUp(Shield(self, self.players[0]))
-        self.players[0].addPowerUp(Call911(self, self.players[0]))
+        #self.players[0].addPowerUp(Call911(self, self.players[0]))
+        #self.players[0].addPowerUp(Hydraulics(self, self.players[0]))
+        #self.players[0].addPowerUp(Shield(self, self.players[0]))
+        #self.players[0].addPowerUp(Call911(self, self.players[0]))
 
         self.add_tick_callback(self.update)
 
