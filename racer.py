@@ -14,6 +14,9 @@ class Window:
     SCORE_POS_Y = 50
     TIME_OUT_POS_X = 50
     TIME_OUT_POS_Y = 70
+    INVENTORY_X = 50
+    INVENTORY_Y = 450
+    
     VERSION = "v1.6"
 
 class KeyboardKeys:
@@ -21,6 +24,9 @@ class KeyboardKeys:
     KEY_RIGHT = 65363
     KEY_UP = 65362
     KEY_DOWN = 65364
+    KEY_ONE = 49
+    KEY_FIVE = 54
+    KEY_TO_NUM = KEY_ONE - 1
 
 class RoadPositions:
     UPPER_LIMIT = 135
@@ -79,6 +85,13 @@ class CarModels:
 
 class PowerUps:
     TIME_OUT = 10000 #in miliseconds
+    INVENTORY_SIZE = 5
+    ICON_SIZE = 32
+    EMPTY = cairo.ImageSurface.create_from_png("./empty.png")
+    SHIELD = cairo.ImageSurface.create_from_png("./shield.png")
+    HYDRAULICS = cairo.ImageSurface.create_from_png("./Hydraulics.png")
+    CALL_911 = cairo.ImageSurface.create_from_png("./911.png")
+
 
 class SmokeEmitter(ParticleManager.ParticleEmitter):
     def __init__(self, x, y, speed_x, speed_y):
@@ -168,6 +181,7 @@ class Player(Car):
         self.score = 0
         self.score_hundreds = 0
 
+        self.inventory = []
         self.powerUpTimeOut = 0
         self.hydraulics = False
         self.shield = False
@@ -219,6 +233,7 @@ class Player(Car):
        
         self.draw_score(cr)
         self.draw_power_up_timer(cr)
+        self.draw_inventory(cr)
 
     def draw_score(self, cr):
         if(self.score > 0):
@@ -243,6 +258,39 @@ class Player(Car):
         cr.move_to(Window.TIME_OUT_POS_X, Window.TIME_OUT_POS_Y)
         cr.show_text("0:" + str(time_out_seconds))
 
+    def draw_inventory(self, cr):
+        for i in range(PowerUps.INVENTORY_SIZE):
+            cr.save()
+            x = Window.INVENTORY_X+PowerUps.ICON_SIZE*i
+            cr.translate(x, Window.INVENTORY_Y)
+            if i < len(self.inventory):
+                cr.set_source_surface(self.inventory[i].icon, 0, 0)
+            else:
+                cr.set_source_surface(PowerUps.EMPTY, 0, 0)
+
+            if self.powerUpTimeOut > 0:
+                cr.paint_with_alpha(0.5)
+            else:
+                cr.paint()
+
+            cr.restore()
+
+            if self.powerUpTimeOut == 0:
+                cr.set_source_rgb(1, 1, 1)
+            else:
+                cr.set_source_rgb(1, 0, 0)
+            cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+            cr.set_font_size(14)
+            cr.move_to(x + (PowerUps.ICON_SIZE/2)-7, Window.INVENTORY_Y+PowerUps.ICON_SIZE+20)
+            cr.show_text(str(i+1))
+
+    def addPowerUp(self, powerup):
+        if len(self.inventory) < PowerUps.INVENTORY_SIZE:
+            self.inventory.append(powerup)
+
+    def usePowerUp(self, num):
+        if(num <= len(self.inventory) and self.powerUpTimeOut == 0):
+            self.inventory.pop(num-1).execute()
 
     def disablePowerUps(self):
         self.hydraulics = False
@@ -261,6 +309,7 @@ class NPV(Car): #NPV - Non Player Vehicle
         self.skid_marks_x = 0                 #NPV specific
         self.skid_marks_y = 0                 #NPV specific
         self.skid_mark = None                 #NPV specific
+        self.emiting_smoke = False
 
     def check_overtake_need(self, cars):
         if self.skiding or (self.switching_to_left_lane or self.switching_to_right_lane):
@@ -480,6 +529,7 @@ class PowerUp:
     def __init__(self, game, player):
         self.player = player
         self.game = game    
+        self.icon = None
 
     def execute(self):
         self.player.powerUpTimeOut = PowerUps.TIME_OUT
@@ -492,6 +542,7 @@ class PowerUp:
 class Call911(PowerUp):
     def __init__(self, game, player):
         super(Call911, self).__init__(game, player)
+        self.icon = PowerUps.CALL_911
 
     def applyPowerUp(self):
         self.game.generateEmergencyVehicle(self.player.vertical_position)
@@ -499,6 +550,7 @@ class Call911(PowerUp):
 class Hydraulics(PowerUp):
     def __init__(self, game, player):
         super(Hydraulics, self).__init__(game, player)
+        self.icon = PowerUps.HYDRAULICS
 
     def applyPowerUp(self):
         self.player.hydraulics = True
@@ -506,6 +558,7 @@ class Hydraulics(PowerUp):
 class Shield(PowerUp):
     def __init__(self, game, player):
         super(Shield, self).__init__(game, player)
+        self.icon = PowerUps.SHIELD
 
     def applyPowerUp(self):
         self.player.shield = True
@@ -523,7 +576,12 @@ class Game(Gtk.Window):
         self.players = []
 
         self.players.append(Player(CarModels.GALLARDO, 0, RoadPositions.MIDDLE_LANE, Speed.MAX_KMH*Speed.ONE_KMH))
-        
+
+        self.players[0].addPowerUp(Call911(self, self.players[0]))
+        self.players[0].addPowerUp(Hydraulics(self, self.players[0]))
+        self.players[0].addPowerUp(Shield(self, self.players[0]))
+        self.players[0].addPowerUp(Call911(self, self.players[0]))
+
         self.add_tick_callback(self.update)
 
     def init_ui(self):
@@ -604,7 +662,9 @@ class Game(Gtk.Window):
             for npv in self.npvs:
                 if self.check_collision(player.horizontal_position, player.vertical_position, player.width, player.height, npv.horizontal_position, npv.vertical_position, npv.width, npv.height):
                     npv.wobble()
-                    ParticleManager.add_new_emmitter(SmokeEmitter( npv.horizontal_position, npv.vertical_position-npv.height_offset, -npv.speed, 0))
+                    if not npv.emiting_smoke:
+                        npv.emiting_smoke = True
+                        ParticleManager.add_new_emmitter(SmokeEmitter( npv.horizontal_position, npv.vertical_position-npv.height_offset, -npv.speed, 0))
                     if not player.shield:
                         ParticleManager.add_new_emmitter(PointsEmitter( player.horizontal_position, player.vertical_position, -player.speed, 0.2))
                         player.score -= 10
@@ -670,6 +730,8 @@ class Game(Gtk.Window):
                     self.players[0].up = True
                 elif event.keyval == KeyboardKeys.KEY_DOWN:
                     self.players[0].down = True
+                elif event.keyval >= KeyboardKeys.KEY_ONE and event.keyval <= KeyboardKeys.KEY_FIVE:
+                    self.players[0].usePowerUp(event.keyval-KeyboardKeys.KEY_TO_NUM)
                 elif event.keyval == 115:
                     Hydraulics(self, self.players[0]).execute()
     
