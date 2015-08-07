@@ -79,8 +79,12 @@ class CarModels:
     RS4 = cairo.ImageSurface.create_from_png("./rs4.png")
     SL65 = cairo.ImageSurface.create_from_png("./sl65.png")
     SLR = cairo.ImageSurface.create_from_png("./slr.png")
+    TRUCK_BLUE = cairo.ImageSurface.create_from_png("./truck_blue.png")
+    TRUCK_RED = cairo.ImageSurface.create_from_png("./truck_red.png")
+    TRUCK_GREEN = cairo.ImageSurface.create_from_png("./truck_green.png")
 
     AVAILABLE_CARS = ( CORVETTE, CHARGER, GOLF, INTEGRA, SUPRA, F430, CCX, DB9, F1, SUPERLEGGERA, GT, LP570, MURCIELAGO, R8, RS4, SL65, SLR )
+    TRUCKS = ( TRUCK_GREEN, TRUCK_RED, TRUCK_BLUE )
     EMERGENCY_CARS = ( AMBULANCE, COP )
 
 class PowerUps:
@@ -89,6 +93,9 @@ class PowerUps:
     ICON_SIZE = 32
     EMPTY = cairo.ImageSurface.create_from_png("./empty.png")
     SHIELD = cairo.ImageSurface.create_from_png("./shield.png")
+    ENERGY_SHIELD = cairo.ImageSurface.create_from_png("./energyshield.png")
+    ENERGY_SHIELD_WIDTH = cairo.ImageSurface.get_width(ENERGY_SHIELD)
+    ENERGY_SHIELD_HEIGHT = cairo.ImageSurface.get_height(ENERGY_SHIELD)
     HYDRAULICS = cairo.ImageSurface.create_from_png("./Hydraulics.png")
     CALL_911 = cairo.ImageSurface.create_from_png("./911.png")
 
@@ -251,8 +258,16 @@ class Player(Car):
             cr.translate(x, y)
             cr.rotate(self.rotation);
             cr.translate(-x,-y) 
+        if self.hydraulics:
+            cr.scale(1.2, 1.2)
         cr.set_source_surface(self.model, 0, 0)
         cr.paint()
+        if self.shield:
+            cr.save()
+            cr.translate(self.width/2 - PowerUps.ENERGY_SHIELD_WIDTH/2, self.height_offset - PowerUps.ENERGY_SHIELD_HEIGHT/2)
+            cr.set_source_surface(PowerUps.ENERGY_SHIELD, 0, 0)
+            cr.paint()
+            cr.restore()
         cr.restore()
         
         if self.crash_handler != None:
@@ -366,7 +381,7 @@ class NPV(Car): #NPV - Non Player Vehicle
     def is_lane_free(self, cars, lane):
         if len(cars) == 0:
             return True
-        box_x = self.horizontal_position; #begining of the car
+        box_x = self.horizontal_position - 20; #begining of the car minus some clearance
         box_y = lane;   #Middle of the car
         box_w = self.width + 100 #give it some clearance
         box_h = self.height
@@ -384,7 +399,7 @@ class NPV(Car): #NPV - Non Player Vehicle
         if self.speed < 0: #ignore if we are an ambulance
             return
         if other_car.speed > 0:
-            if (other_car.horizontal_position - self.horizontal_position) < 170:
+            if (other_car.horizontal_position - self.horizontal_position) < self.width+50:
                 self.speed = other_car.speed
         else:
             self.speed = 0
@@ -486,6 +501,26 @@ class NPV(Car): #NPV - Non Player Vehicle
             else:
                 self.skid_marks_x += time_delta*(-player_speed) 
 
+
+class Truck(NPV):
+    def __init__(self, model, y, speed, game):
+            super(Truck, self).__init__(model, y, speed)
+            self.game = game
+
+    def update(self, time_delta, player_speed):
+        if(self.horizontal_position < RoadPositions.FORWARD_LIMIT and random.randrange(200) == 1):
+            self.dropPowerUp()
+        super(Truck, self).update(time_delta, player_speed)
+
+    def dropPowerUp(self):
+        rand = random.randrange(3)
+        if rand == 0:
+            Call911(self.game).drop(self.horizontal_position, self.vertical_position-self.height_offset)
+        elif rand == 1:
+            Hydraulics(self.game).drop(self.horizontal_position, self.vertical_position-self.height_offset)
+        else:
+            Shield(self.game).drop(self.horizontal_position, self.vertical_position-self.height_offset)
+
 class PlayerCrashHandler:
     ACCELARATION = 0.000005
     def __init__(self, player, other_object_speed, other_object_mass = 10):
@@ -553,21 +588,48 @@ class PlayerCrashHandler:
         cr.restore()
 
 class PowerUp:
-    def __init__(self, game, player):
+    def __init__(self, game, player=None):
         self.player = player
         self.game = game    
-        self.icon = None
+        self.icon = PowerUps.EMPTY
+        self.x = 0
+        self.y = 0
+
+    def drop(self, x, y):
+        self.game.droped_items.append(self)
+        self.x = x
+        self.y = y
 
     def execute(self):
+        if self.player == None:
+            return
         self.player.powerUpTimeOut = PowerUps.TIME_OUT
         self.applyPowerUp()
-
+    
     #abstract
     def applyPowerUp(self):
         pass
 
+    def picked_up_by(self, player):
+        self.game.droped_items.remove(self)
+        self.player = player
+        player.addPowerUp(self)
+
+    def update(self, time_delta):
+        self.x += time_delta*(-Speed.MAX_SPEED)
+        if self.x < -PowerUps.ICON_SIZE:
+            self.game.droped_items.remove(self)
+
+    def draw(self, cr):
+        cr.save()
+        cr.translate(self.x, self.y)
+        cr.set_source_surface(self.icon, 0, 0)
+        cr.paint()
+        cr.restore()
+
+
 class Call911(PowerUp):
-    def __init__(self, game, player):
+    def __init__(self, game, player=None):
         super(Call911, self).__init__(game, player)
         self.icon = PowerUps.CALL_911
 
@@ -575,7 +637,7 @@ class Call911(PowerUp):
         self.game.generateEmergencyVehicle(self.player.vertical_position)
 
 class Hydraulics(PowerUp):
-    def __init__(self, game, player):
+    def __init__(self, game, player=None):
         super(Hydraulics, self).__init__(game, player)
         self.icon = PowerUps.HYDRAULICS
 
@@ -583,7 +645,7 @@ class Hydraulics(PowerUp):
         self.player.hydraulics = True
 
 class Shield(PowerUp):
-    def __init__(self, game, player):
+    def __init__(self, game, player=None):
         super(Shield, self).__init__(game, player)
         self.icon = PowerUps.SHIELD
 
@@ -602,6 +664,7 @@ class Game(Gtk.Window):
         self.npvs = []
         self.spawn_delay = 0
         self.players = []
+        self.droped_items = []
 
         self.players.append(Player(CarModels.GALLARDO, 0, RoadPositions.MIDDLE_LANE, Speed.MAX_KMH*Speed.ONE_KMH))
 
@@ -647,10 +710,12 @@ class Game(Gtk.Window):
 
         #Select a car
         random_num = random.randrange(100)
-        if random_num > 4:
-            self.npvs.append(NPV(CarModels.AVAILABLE_CARS[random.randrange(len(CarModels.AVAILABLE_CARS))], lane, speed))
-        else:
+        if random_num < 4:
             self.generateEmergencyVehicle(lane)
+        elif random_num < 10:
+            self.npvs.append(Truck(CarModels.TRUCKS[random.randrange(len(CarModels.TRUCKS))], lane, speed, self))
+        else:
+            self.npvs.append(NPV(CarModels.AVAILABLE_CARS[random.randrange(len(CarModels.AVAILABLE_CARS))], lane, speed))
 
     def update(self, wid, fc):
         current_time = fc.get_frame_time()
@@ -711,8 +776,6 @@ class Game(Gtk.Window):
         #Update Particle Emitters
         ParticleManager.update(time_delta)
 
-
-
         #Messages
         current_crashed_count = 0
         for npv in self.npvs:
@@ -729,6 +792,14 @@ class Game(Gtk.Window):
             
         self.previous_crash_count = current_crashed_count
 
+        for player in self.players:
+            for item in self.droped_items:
+                if self.check_collision(player.horizontal_position, player.vertical_position, player.width, player.height, item.x, item.y, PowerUps.ICON_SIZE, PowerUps.ICON_SIZE):
+                    item.picked_up_by(player)
+
+
+        for item in self.droped_items:
+            item.update(time_delta)
 
         self.last_update_timestamp = current_time
         self.darea.queue_draw()
@@ -763,8 +834,11 @@ class Game(Gtk.Window):
         self.road.draw(cr)
        
         for npv in self.npvs:
-            npv.draw(cr);
-        
+            npv.draw(cr)
+       
+        for item in self.droped_items:
+            item.draw(cr)
+
         for player in self.players:
             player.draw(cr)
 
