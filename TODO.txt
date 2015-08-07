@@ -2,12 +2,10 @@
 	Up to ten collectable, select with num keys
 	more speed
 	less speed
-	shield
 	weapon
 	2-wheels
-	call 911
-	Hydraulics
 
 - Multiplayer
 
 - Trucks that randomly drop obstacles
+

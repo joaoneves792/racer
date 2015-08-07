@@ -101,19 +101,46 @@ class SmokeEmitter(ParticleManager.ParticleEmitter):
             particle.set_properties(self.x, self.y, 500, math.pi/2, self.speed_x + random.randrange(-5, 5)*Speed.ONE_KMH, self.speed_y + random.randrange(-5, 5)*Speed.ONE_KMH,  self.size, self.shape, False)
 
 class PointsEmitter(ParticleManager.ParticleEmitter):
-    def __init__(self, x, y, speed_x, speed_y, size=100, shape=ParticleManager.Particles.POINTS):
-        super(PointsEmitter, self).__init__(x, y, speed_x, speed_y, size, shape, 1, 1)
+    def __init__(self, x, y, speed_x, speed_y, size=100, shape=ParticleManager.Particles.POINTS, num_of_particles=3):
+        super(PointsEmitter, self).__init__(x, y, speed_x, speed_y, size, shape, num_of_particles , 0.1)
     def set_particles(self):
         for particle in self.particles:
             particle.set_properties(self.x, self.y, 700, 0, self.speed_x + random.randrange(-5, 5)*Speed.ONE_KMH, self.speed_y + random.randrange(-5, 5)*Speed.ONE_KMH,  self.size, self.shape, True)
 
+class Minus10Points(PointsEmitter):
+    def __init__(self, x, y, speed_x, speed_y, size=100, shape=ParticleManager.Particles.POINTS):
+        super(Minus10Points, self).__init__(x, y, speed_x, speed_y, size, shape)
+    def set_particles(self):
+        for particle in self.particles:
+            particle.set_properties(self.x, self.y, 700, 0, self.speed_x + random.randrange(-5, 5)*Speed.ONE_KMH, self.speed_y + random.randrange(-5, 5)*Speed.ONE_KMH,  self.size, self.shape, True)
+
+
 class Plus100Points(PointsEmitter):
     def __init__(self):
-        super(Plus100Points, self).__init__(50, 130, Speed.MAX_KMH*Speed.ONE_KMH, 0.1, 200, ParticleManager.Particles.PLUS_100_POINTS)
+        super(Plus100Points, self).__init__(50, 130, Speed.MAX_KMH*Speed.ONE_KMH, 0.1, 200, ParticleManager.Particles.PLUS_100_POINTS, 1)
 
 class Minus100Points(PointsEmitter):
     def __init__(self):
-        super(Minus100Points, self).__init__(50, 130, Speed.MAX_KMH*Speed.ONE_KMH, 0.1, 400, ParticleManager.Particles.MINUS_100_POINTS)
+        super(Minus100Points, self).__init__(50, 130, Speed.MAX_KMH*Speed.ONE_KMH, 0.1, 400, ParticleManager.Particles.MINUS_100_POINTS, 1)
+
+class MessageEmitter(ParticleManager.ParticleEmitter):
+    def __init__(self, x, y, shape):
+        super(MessageEmitter, self).__init__(x, y, 0, 0, 100, shape, 1, 1)
+    def set_particles(self):
+        for particle in self.particles:
+            particle.set_properties(self.x, self.y, 1500, 0, self.speed_x, self.speed_y,  self.size, self.shape, True)
+
+class HolyShit(MessageEmitter):
+    def __init__(self):
+        super(HolyShit, self).__init__(512, 340, ParticleManager.Particles.HOLY_SHIT)
+
+class Mayhem(MessageEmitter):
+    def __init__(self):
+        super(Mayhem, self).__init__(512, 256, ParticleManager.Particles.MAYHEM)
+
+class Annihilation(MessageEmitter):
+    def __init__(self):
+        super(Annihilation, self).__init__(512, 170, ParticleManager.Particles.ANNIHILATION)
 
 class Road():
     def __init__(self, x=0):
@@ -309,7 +336,7 @@ class NPV(Car): #NPV - Non Player Vehicle
         self.skid_marks_x = 0                 #NPV specific
         self.skid_marks_y = 0                 #NPV specific
         self.skid_mark = None                 #NPV specific
-        self.emiting_smoke = False
+        self.crashed = False
 
     def check_overtake_need(self, cars):
         if self.skiding or (self.switching_to_left_lane or self.switching_to_right_lane):
@@ -570,6 +597,7 @@ class Game(Gtk.Window):
         self.init_ui()
         self.road = Road(0)
         self.speed = Speed.MAX_SPEED
+        self.previous_crash_count = 0
         self.last_update_timestamp = -1
         self.npvs = []
         self.spawn_delay = 0
@@ -662,14 +690,15 @@ class Game(Gtk.Window):
             for npv in self.npvs:
                 if self.check_collision(player.horizontal_position, player.vertical_position, player.width, player.height, npv.horizontal_position, npv.vertical_position, npv.width, npv.height):
                     npv.wobble()
-                    if not npv.emiting_smoke:
-                        npv.emiting_smoke = True
-                        ParticleManager.add_new_emmitter(SmokeEmitter( npv.horizontal_position, npv.vertical_position-npv.height_offset, -npv.speed, 0))
                     if not player.shield:
-                        ParticleManager.add_new_emmitter(PointsEmitter( player.horizontal_position, player.vertical_position, -player.speed, 0.2))
-                        player.score -= 10
-                        if(player.crash_handler == None):
-                            player.crash_handler = PlayerCrashHandler(player, npv.speed)
+                        if not npv.crashed:
+                            ParticleManager.add_new_emmitter(Minus10Points(player.horizontal_position, player.vertical_position, -player.speed, 0.2))
+                            player.score -= 30
+                            if(player.crash_handler == None):
+                                player.crash_handler = PlayerCrashHandler(player, npv.speed)
+                    if not npv.crashed:
+                        npv.crashed = True
+                        ParticleManager.add_new_emmitter(SmokeEmitter( npv.horizontal_position, npv.vertical_position-npv.height_offset, -npv.speed, 0))
             if player.crash_handler != None:
                 player.crash_handler.update(time_delta)
 
@@ -681,6 +710,25 @@ class Game(Gtk.Window):
 
         #Update Particle Emitters
         ParticleManager.update(time_delta)
+
+
+
+        #Messages
+        current_crashed_count = 0
+        for npv in self.npvs:
+            if npv.crashed:
+                 current_crashed_count += 1
+
+        if current_crashed_count > self.previous_crash_count:
+            if current_crashed_count == 3:
+                ParticleManager.add_new_emmitter(HolyShit())
+            elif current_crashed_count == 4:
+                ParticleManager.add_new_emmitter(Mayhem())
+            elif current_crashed_count > 4:
+                ParticleManager.add_new_emmitter(Annihilation())
+            
+        self.previous_crash_count = current_crashed_count
+
 
         self.last_update_timestamp = current_time
         self.darea.queue_draw()
@@ -703,7 +751,8 @@ class Game(Gtk.Window):
             else:
                 car1.hit_from_behind()
         else:
-            ParticleManager.add_new_emmitter(SmokeEmitter(car1.horizontal_position, car1.vertical_position-car1.height_offset, -car1.speed, 0))
+            if not car1.crashed:
+                ParticleManager.add_new_emmitter(SmokeEmitter(car1.horizontal_position, car1.vertical_position-car1.height_offset, -car1.speed, 0))
             car1.wobble()
             car2.wobble()
 

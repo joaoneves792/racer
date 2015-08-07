@@ -6,8 +6,11 @@ class Particles:
     POINTS = cairo.ImageSurface.create_from_png("./points.png")
     PLUS_100_POINTS = cairo.ImageSurface.create_from_png("./plus100points.png")
     MINUS_100_POINTS = cairo.ImageSurface.create_from_png("./minus100points.png")
-    MAX_EMMITTERS = 10 
-    POOLED_PARTICLES = 200
+    HOLY_SHIT = cairo.ImageSurface.create_from_png("./holy.png")
+    MAYHEM = cairo.ImageSurface.create_from_png("./mayhem.png")
+    ANNIHILATION = cairo.ImageSurface.create_from_png("./annihilation.png")
+    MAX_EMMITTERS = 20 
+    POOLED_PARTICLES = 400
     WIDTH = 64
     HEIGHT = 64
 
@@ -134,6 +137,8 @@ def add_new_emmitter(new_emmiter):
     if len(__particleEmitters__) < Particles.MAX_EMMITTERS:
         __particleEmitters__.append(new_emmiter)
         new_emmiter.init_particles()
+    else:
+        print("Too many emitters!!")
 
 def update(time_delta):
     global __particleEmitters__
