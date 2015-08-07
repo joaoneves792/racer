@@ -12,7 +12,9 @@ class Window:
     HEIGHT = 512
     SCORE_POS_X = 50
     SCORE_POS_Y = 50
-    VERSION = "v1.5"
+    TIME_OUT_POS_X = 50
+    TIME_OUT_POS_Y = 70
+    VERSION = "v1.6"
 
 class KeyboardKeys:
     KEY_LEFT  = 65361
@@ -43,6 +45,7 @@ class Speed:
     MAX_KMH = 80
     MAX_WOBBLE_ROTATION = 0.52359
     MAX_SPEED = MAX_KMH*ONE_KMH
+    BASE_CRASH_SPEED_DECREASE = (10*ONE_KMH) 
 
 class SkidMarks:
     SKID_LEFT = cairo.ImageSurface.create_from_png("skid_left.png")
@@ -73,6 +76,9 @@ class CarModels:
 
     AVAILABLE_CARS = ( CORVETTE, CHARGER, GOLF, INTEGRA, SUPRA, F430, CCX, DB9, F1, SUPERLEGGERA, GT, LP570, MURCIELAGO, R8, RS4, SL65, SLR )
     EMERGENCY_CARS = ( AMBULANCE, COP )
+
+class PowerUps:
+    TIME_OUT = 10000 #in miliseconds
 
 class SmokeEmitter(ParticleManager.ParticleEmitter):
     def __init__(self, x, y, speed_x, speed_y):
@@ -162,6 +168,10 @@ class Player(Car):
         self.score = 0
         self.score_hundreds = 0
 
+        self.powerUpTimeOut = 0
+        self.hydraulics = False
+        self.shield = False
+
     def update(self, time_delta):
         for i in range(self.score_hundreds - int(self.score / 100)):
             ParticleManager.add_new_emmitter(Minus100Points())
@@ -180,7 +190,17 @@ class Player(Car):
             self.horizontal_position += 5
         elif self.braking and self.horizontal_position > RoadPositions.REAR_LIMIT:
             self.horizontal_position -= 5
-        
+
+        if self.speed < Speed.MAX_SPEED:
+            displacement = (Speed.MAX_SPEED - self.speed)*time_delta
+            self.horizontal_position -= displacement if (self.horizontal_position - displacement) >= 0 else 0 
+
+        if(self.powerUpTimeOut > 0):
+            self.powerUpTimeOut -= time_delta
+        if self.powerUpTimeOut <= 0:
+            self.disablePowerUps()
+            self.powerUpTimeOut = 0
+
     def draw(self, cr):
         cr.save()
         cr.translate(self.horizontal_position, self.vertical_position - self.height_offset);
@@ -196,7 +216,10 @@ class Player(Car):
         
         if self.crash_handler != None:
             self.crash_handler.draw(cr)
-        
+       
+        self.draw_score(cr)
+        self.draw_power_up_timer(cr)
+
     def draw_score(self, cr):
         if(self.score > 0):
             cr.set_source_rgb(1, 1, 1)
@@ -206,6 +229,24 @@ class Player(Car):
         cr.set_font_size(20)
         cr.move_to(Window.SCORE_POS_X, Window.SCORE_POS_Y)
         cr.show_text("SCORE: " + str(int(self.score)))
+
+    def draw_power_up_timer(self, cr):
+        if self.powerUpTimeOut <= 0:
+            return
+        time_out_seconds = int(self.powerUpTimeOut / 1000)
+        if(time_out_seconds > 3):
+            cr.set_source_rgb(1, 1, 1)
+        else:
+            cr.set_source_rgb(1, 0, 0)
+        cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+        cr.set_font_size(20)
+        cr.move_to(Window.TIME_OUT_POS_X, Window.TIME_OUT_POS_Y)
+        cr.show_text("0:" + str(time_out_seconds))
+
+
+    def disablePowerUps(self):
+        self.hydraulics = False
+        self.shield = False
 
 class NPV(Car): #NPV - Non Player Vehicle
     def __init__(self, model, y, speed):
@@ -371,23 +412,39 @@ class NPV(Car): #NPV - Non Player Vehicle
 
 class PlayerCrashHandler:
     ACCELARATION = 0.000005
-    def __init__(self, player):
+    def __init__(self, player, other_object_speed, other_object_mass = 10):
         self.t = 0
         self.player = player
-        self.player.speed -= (10*Speed.ONE_KMH) if (player.speed >= Speed.MAX_KMH*Speed.ONE_KMH) else player.speed
-        if (random.randrange(2) == 0) and player.vertical_position > RoadPositions.UPPER_LIMIT+20: 
-            jolt = -20 
-        elif player.vertical_position < RoadPositions.LOWER_LIMIT-20:
-            jolt = 20
-        else:
-            jolt = -20
+        self.player.speed -= self.calculateSpeedDecrease(self.player.speed - other_object_speed, other_object_mass)
+        self.player.forward = False
+        jolt = self.calculateSideJolt(self.player.speed - other_object_speed, other_object_mass)
         self.player.vertical_position += jolt
         self.player.draw_rotation = True
         self.skid_mark = SkidMarks.SKID_LEFT if jolt < 0 else SkidMarks.SKID_RIGHT
         self.skid_marks_x = None
         self.skid_marks_y = None
         self.timeout = 1700
-        #self.timeout = (self.player.speed)*(Window.WIDTH + self.player.width) Why doesnt this work??!?
+
+    def calculateSpeedDecrease(self, impact_speed, mass):
+        speedDecrease = Speed.BASE_CRASH_SPEED_DECREASE * impact_speed*mass
+        if self.player.speed - speedDecrease <= 0:
+            return self.player.speed
+        else:
+            return speedDecrease
+
+    def calculateSideJolt(self, impact_speed, mass):
+        #jolt = 20**(1+(impact_speed*mass*100)) #TODO Make me better
+        jolt = 20
+        if (random.randrange(2) == 0):
+            if self.player.vertical_position > RoadPositions.UPPER_LIMIT+jolt: 
+                return -jolt 
+            else:
+                return RoadPositions.UPPER_LIMIT - self.player.vertical_position
+        else:
+            if self.player.vertical_position < RoadPositions.LOWER_LIMIT-jolt:
+                return jolt
+            else:
+                return RoadPositions.LOWER_LIMIT - self.player.vertical_position
 
     def update(self, time_delta):
         if(self.player.speed >= Speed.MAX_KMH*Speed.ONE_KMH):
@@ -406,7 +463,7 @@ class PlayerCrashHandler:
         if self.skid_marks_x == None:
             self.skid_marks_x = self.player.horizontal_position
         else:
-            self.skid_marks_x += time_delta*(-self.player.speed) 
+            self.skid_marks_x += time_delta*(-Speed.MAX_SPEED) 
 
         self.t += time_delta
         if self.t >= self.timeout and self.player.draw_rotation == False:
@@ -418,6 +475,40 @@ class PlayerCrashHandler:
         cr.set_source_surface(self.skid_mark, 0, 0)
         cr.paint()
         cr.restore()
+
+class PowerUp:
+    def __init__(self, game, player):
+        self.player = player
+        self.game = game    
+
+    def execute(self):
+        self.player.powerUpTimeOut = PowerUps.TIME_OUT
+        self.applyPowerUp()
+
+    #abstract
+    def applyPowerUp(self):
+        pass
+
+class Call911(PowerUp):
+    def __init__(self, game, player):
+        super(Call911, self).__init__(game, player)
+
+    def applyPowerUp(self):
+        self.game.generateEmergencyVehicle(self.player.vertical_position)
+
+class Hydraulics(PowerUp):
+    def __init__(self, game, player):
+        super(Hydraulics, self).__init__(game, player)
+
+    def applyPowerUp(self):
+        self.player.hydraulics = True
+
+class Shield(PowerUp):
+    def __init__(self, game, player):
+        super(Shield, self).__init__(game, player)
+
+    def applyPowerUp(self):
+        self.player.shield = True
 
 class Game(Gtk.Window):
 
@@ -451,7 +542,10 @@ class Game(Gtk.Window):
         self.connect("key-release-event", self.on_key_release)
         self.show_all()
         self.set_resizable(False)
-    
+   
+    def generateEmergencyVehicle(self, vertical_position):
+            self.npvs.append(NPV(CarModels.EMERGENCY_CARS[random.randrange(len(CarModels.EMERGENCY_CARS))], vertical_position, -20*Speed.ONE_KMH))
+
     def generateRandomNPV(self):
         #Select a random lane
         random_num = random.randrange(3)
@@ -468,9 +562,9 @@ class Game(Gtk.Window):
         #Select a car
         random_num = random.randrange(100)
         if random_num > 4:
-            return NPV(CarModels.AVAILABLE_CARS[random.randrange(len(CarModels.AVAILABLE_CARS))], lane, speed)
+            self.npvs.append(NPV(CarModels.AVAILABLE_CARS[random.randrange(len(CarModels.AVAILABLE_CARS))], lane, speed))
         else:
-            return NPV(CarModels.EMERGENCY_CARS[random.randrange(len(CarModels.EMERGENCY_CARS))], lane, -20*Speed.ONE_KMH)
+            self.generateEmergencyVehicle(lane)
 
     def update(self, wid, fc):
         current_time = fc.get_frame_time()
@@ -494,7 +588,7 @@ class Game(Gtk.Window):
         #create new NPVs
         if len(self.npvs) < 8:
             if self.spawn_delay <= 0:
-                self.npvs.append(self.generateRandomNPV())
+                self.generateRandomNPV()
                 self.spawn_delay = 900
         #Recalculate their position
         for npv in self.npvs:
@@ -505,14 +599,17 @@ class Game(Gtk.Window):
         #Collision detection
         #(between player and non-players)
         for player in self.players:
+            if player.hydraulics:
+                continue
             for npv in self.npvs:
                 if self.check_collision(player.horizontal_position, player.vertical_position, player.width, player.height, npv.horizontal_position, npv.vertical_position, npv.width, npv.height):
                     npv.wobble()
                     ParticleManager.add_new_emmitter(SmokeEmitter( npv.horizontal_position, npv.vertical_position-npv.height_offset, -npv.speed, 0))
-                    ParticleManager.add_new_emmitter(PointsEmitter( player.horizontal_position, player.vertical_position, -player.speed, 0.2))
-                    player.score -= 10
-                    if(player.crash_handler == None):
-                        player.crash_handler = PlayerCrashHandler(player)
+                    if not player.shield:
+                        ParticleManager.add_new_emmitter(PointsEmitter( player.horizontal_position, player.vertical_position, -player.speed, 0.2))
+                        player.score -= 10
+                        if(player.crash_handler == None):
+                            player.crash_handler = PlayerCrashHandler(player, npv.speed)
             if player.crash_handler != None:
                 player.crash_handler.update(time_delta)
 
@@ -554,7 +651,6 @@ class Game(Gtk.Window):
         #REMEMBER Order is important here
         self.road.draw(cr)
        
-       
         for npv in self.npvs:
             npv.draw(cr);
         
@@ -562,9 +658,6 @@ class Game(Gtk.Window):
             player.draw(cr)
 
         ParticleManager.draw(cr)
-
-        for player in self.players:
-            player.draw_score(cr)
 
     def on_key_press(self, wid, event):
         if event.type == Gdk.EventType.KEY_PRESS:
@@ -578,7 +671,7 @@ class Game(Gtk.Window):
                 elif event.keyval == KeyboardKeys.KEY_DOWN:
                     self.players[0].down = True
                 elif event.keyval == 115:
-                    pass
+                    Hydraulics(self, self.players[0]).execute()
     
     def on_key_release(self, wid, event):
         if event.type == Gdk.EventType.KEY_RELEASE:
