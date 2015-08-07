@@ -40,6 +40,7 @@ class Speed:
     ONE_RADMIL = 0.001 
     MAX_KMH = 80
     MAX_WOBBLE_ROTATION = 0.52359
+    MAX_SPEED = MAX_KMH*ONE_KMH
 
 class SkidMarks:
     SKID_LEFT = cairo.ImageSurface.create_from_png("skid_left.png")
@@ -260,9 +261,56 @@ class Player(Car):
         self.down = False
         self.forward = False
         self.braking = False
-        self.crashHandler = None
+        self.crash_handler = None
         self.score = 0
         self.score_hundreds = 0
+
+    def update(self, time_delta, particleEmitters):
+        for i in range(self.score_hundreds - int(self.score / 100)):
+            if len(particleEmitters) < Particles.MAX_EMMITTERS:
+                particleEmitters.append(Minus100Points(self.particlePool))
+        self.score += 0.03 * time_delta
+        old_score_hundreds = self.score_hundreds
+        self.score_hundreds = int(self.score / 100)
+        for i in range(self.score_hundreds-old_score_hundreds):
+            if len(particleEmitters) < Particles.MAX_EMMITTERS:
+                particleEmitters.append(Plus100Points(self.particlePool))
+        #Adjust postition to user input
+        if self.up and self.vertical_position > RoadPositions.UPPER_LIMIT:
+            self.vertical_position -= 5
+        elif self.down and self.vertical_position < RoadPositions.LOWER_LIMIT:
+            self.vertical_position += 5
+        
+        if self.forward and self.horizontal_position < RoadPositions.FORWARD_LIMIT:
+            self.horizontal_position += 5
+        elif self.braking and self.horizontal_position > RoadPositions.REAR_LIMIT:
+            self.horizontal_position -= 5
+        
+    def draw(self, cr):
+        cr.save()
+        cr.translate(self.horizontal_position, self.vertical_position - self.height_offset);
+        if self.draw_rotation:
+            x = self.width/2.0
+            y = self.height/2.0
+            cr.translate(x, y)
+            cr.rotate(self.rotation);
+            cr.translate(-x,-y) 
+        cr.set_source_surface(self.model, 0, 0)
+        cr.paint()
+        cr.restore()
+        
+        if self.crash_handler != None:
+            self.crash_handler.draw(cr)
+        
+    def draw_score(self, cr):
+        if(self.score > 0):
+            cr.set_source_rgb(1, 1, 1)
+        else:
+            cr.set_source_rgb(1, 0, 0)
+        cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+        cr.set_font_size(20)
+        cr.move_to(Window.SCORE_POS_X, Window.SCORE_POS_Y)
+        cr.show_text("SCORE: " + str(int(self.score)))
 
 class NPV(Car): #NPV - Non Player Vehicle
     def __init__(self, model, y, speed):
@@ -483,27 +531,16 @@ class Game(Gtk.Window):
         super(Game, self).__init__()
         self.init_ui()
         self.road = Road(0)
-        self.vertical_position = RoadPositions.MIDDLE_LANE
-        self.horizontal_position = 0
-        self.rotation = 0
-        self.draw_rotation = False
-        self.width = cairo.ImageSurface.get_width(CarModels.GALLARDO)
-        self.height = cairo.ImageSurface.get_height(CarModels.GALLARDO)
-        self.height_offset = self.height/2
-        self.up = False
-        self.down = False
-        self.forward = False
-        self.braking = False
-        self.speed = Speed.MAX_KMH*Speed.ONE_KMH
-        self.add_tick_callback(self.update)
         self.last_update_timestamp = -1
         self.npvs = []
         self.spawn_delay = 0
-        self.crash_handler = None
-        self.score = 0
-        self.score_hundreds = 0
         self.particlePool = ParticlePool(Particles.POOLED_PARTICLES)
         self.particleEmitters = []
+        self.players = []
+
+        self.players.append(Player(CarModels.GALLARDO, 0, RoadPositions.MIDDLE_LANE, Speed.MAX_KMH*Speed.ONE_KMH))
+        
+        self.add_tick_callback(self.update)
 
     def init_ui(self):
         self.darea = Gtk.DrawingArea()
@@ -533,7 +570,7 @@ class Game(Gtk.Window):
             lane = RoadPositions.RIGHT_LANE
 
         #Select a Speed
-        speed = self.speed - Speed.ONE_KMH*(random.randrange(20) + 5) # -5 beacause we need the npvs to always be slower than the player
+        speed = Speed.MAX_SPEED - Speed.ONE_KMH*(random.randrange(20) + 5) # -5 beacause we need the npvs to always be slower than the player
 
         #Select a car
         random_num = random.randrange(100)
@@ -548,34 +585,11 @@ class Game(Gtk.Window):
             self.last_update_timestamp = current_time
         time_delta = (current_time - self.last_update_timestamp)/1000 # frame time is in microseconds, we want miliseconds
 
+        self.road.advance(time_delta*Speed.MAX_SPEED) #self.speed)
 
+        for player in self.players:
+            player.update(time_delta, self.particleEmitters)
 
-
-        for i in range(self.score_hundreds - int(self.score / 100)):
-            if len(self.particleEmitters) < Particles.MAX_EMMITTERS:
-                self.particleEmitters.append(Minus100Points(self.particlePool))
-        self.score += 0.03 * time_delta
-        old_score_hundreds = self.score_hundreds
-        self.score_hundreds = int(self.score / 100)
-        for i in range(self.score_hundreds-old_score_hundreds):
-            if len(self.particleEmitters) < Particles.MAX_EMMITTERS:
-                self.particleEmitters.append(Plus100Points(self.particlePool))
-
-        self.road.advance(time_delta*self.speed)
-
-        #Adjust postition to user input
-        if self.up and self.vertical_position > RoadPositions.UPPER_LIMIT:
-            self.vertical_position -= 5
-        elif self.down and self.vertical_position < RoadPositions.LOWER_LIMIT:
-            self.vertical_position += 5
-        
-        if self.forward and self.horizontal_position < RoadPositions.FORWARD_LIMIT:
-            self.horizontal_position += 5
-        elif self.braking and self.horizontal_position > RoadPositions.REAR_LIMIT:
-            self.horizontal_position -= 5
-
-        
-        
         #Update NPVs
         if self.spawn_delay > 0:
             self.spawn_delay -= time_delta
@@ -597,25 +611,24 @@ class Game(Gtk.Window):
 
         #Collision detection
         #(between player and non-players)
-        for npv in self.npvs:
-            if self.check_collision(self.horizontal_position, self.vertical_position, self.width, self.height, npv.horizontal_position, npv.vertical_position, npv.width, npv.height):
-                npv.wobble()
-                if len(self.particleEmitters) < Particles.MAX_EMMITTERS:
-                    self.particleEmitters.append(SmokeEmitter(self.particlePool, npv.horizontal_position, npv.vertical_position-npv.height_offset, -npv.speed, 0))
-                    self.particleEmitters.append(PointsEmitter(self.particlePool, self.horizontal_position, self.vertical_position, -self.speed, 0.2))
-                self.score -= 10
-                if(self.crash_handler == None):
-                    self.crash_handler = PlayerCrashHandler(self)
+        for player in self.players:
+            for npv in self.npvs:
+                if self.check_collision(player.horizontal_position, player.vertical_position, player.width, player.height, npv.horizontal_position, npv.vertical_position, npv.width, npv.height):
+                    npv.wobble()
+                    if len(self.particleEmitters) < Particles.MAX_EMMITTERS:
+                        self.particleEmitters.append(SmokeEmitter(self.particlePool, npv.horizontal_position, npv.vertical_position-npv.height_offset, -npv.speed, 0))
+                        self.particleEmitters.append(PointsEmitter(self.particlePool, player.horizontal_position, player.vertical_position, -player.speed, 0.2))
+                    player.score -= 10
+                    if(player.crash_handler == None):
+                        player.crash_handler = PlayerCrashHandler(player)
+            if player.crash_handler != None:
+                player.crash_handler.update(time_delta)
 
         #(between non-players themselves)
         for i in range(len(self.npvs) - 1):
             for j in range(i+1, len(self.npvs)):
                 if self.check_collision(self.npvs[i].horizontal_position, self.npvs[i].vertical_position, self.npvs[i].width, self.npvs[i].height, self.npvs[j].horizontal_position, self.npvs[j].vertical_position, self.npvs[j].width, self.npvs[j].height):
                     self.npv_collision(self.npvs[i], self.npvs[j])
-
-        if self.crash_handler != None:
-            self.crash_handler.update(time_delta)
-
 
         #Update Particle Emitters
         for pe in self.particleEmitters[:]:
@@ -653,37 +666,18 @@ class Game(Gtk.Window):
         #REMEMBER Order is important here
         self.road.draw(cr)
        
-        if self.crash_handler != None:
-            self.crash_handler.draw(cr)
        
         for npv in self.npvs:
             npv.draw(cr);
         
-        
-        cr.save()
-        cr.translate(self.horizontal_position, self.vertical_position - self.height_offset);
-        if self.draw_rotation:
-            x = self.width/2.0
-            y = self.height/2.0
-            cr.translate(x, y)
-            cr.rotate(self.rotation);
-            cr.translate(-x,-y) 
-        cr.set_source_surface(CarModels.GALLARDO, 0, 0)
-        cr.paint()
-        cr.restore()
-
+        for player in self.players:
+            player.draw(cr)
 
         for pe in self.particleEmitters:
             pe.draw(cr)
 
-        if(self.score > 0):
-            cr.set_source_rgb(1, 1, 1)
-        else:
-            cr.set_source_rgb(1, 0, 0)
-        cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
-        cr.set_font_size(20)
-        cr.move_to(Window.SCORE_POS_X, Window.SCORE_POS_Y)
-        cr.show_text("SCORE: " + str(int(self.score)))
+        for player in self.players:
+            player.draw_score(cr)
 
     def on_key_press(self, wid, event):
         if event.type == Gdk.EventType.KEY_PRESS:
