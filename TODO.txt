@@ -1,0 +1,15 @@
+- Powerups
+	Up to ten collectable, select with num keys
+	more speed
+	less speed
+	shield
+	weapon
+	2-wheels
+	call 911
+	Hydraulics
+
+- Multiplayer
+
+- Trucks that randomly drop obstacles
+
+- Rewrite Code so that the player.s car and npv inherit from a Car class
