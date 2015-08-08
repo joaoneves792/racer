@@ -11,7 +11,7 @@ class Window:
     WIDTH = 1024
     HEIGHT = 512
     
-    VERSION = "v2.0"
+    VERSION = "v2.1"
 
 class HUD:
     PLAYER2_DELTA_X = 800
@@ -976,11 +976,21 @@ class Game(Gtk.Window):
             player.draw(cr)
 
         ParticleManager.draw(cr)
+        
+        if self.paused:            
+            cr.set_source_rgb(1, 1, 1)
+            cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+            font_size=45
+            cr.set_font_size(font_size)
+            cr.move_to(Window.WIDTH/2-2.75*font_size, Window.HEIGHT/2)
+            cr.show_text("PAUSED")
+			
 
     def on_key_press(self, wid, event):
         if event.type == Gdk.EventType.KEY_PRESS:
             if event.keyval == KeyboardKeys.KEY_ESC:
                 self.paused = not self.paused
+                self.darea.queue_draw()
             for i in range(len(self.players)):
                 if event.keyval == KeyboardKeys.KEY_LEFT[i]: 
                     self.players[i].braking = True
