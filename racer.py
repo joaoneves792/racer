@@ -10,14 +10,19 @@ import ParticleManager
 class Window:
     WIDTH = 1024
     HEIGHT = 512
-    SCORE_POS_X = 50
-    SCORE_POS_Y = 50
-    TIME_OUT_POS_X = 50
-    TIME_OUT_POS_Y = 70
-    INVENTORY_X = 50
-    INVENTORY_Y = 450
     
     VERSION = "v1.7"
+
+class HUD:
+    PLAYER2_DELTA_X = 800
+    SCORE_POS_X = (50, 50+PLAYER2_DELTA_X)
+    SCORE_POS_Y = (50, 50)
+    TIME_OUT_POS_X = (50, 50+PLAYER2_DELTA_X)
+    TIME_OUT_POS_Y = (70, 70)
+    INVENTORY_X = (50, 50+PLAYER2_DELTA_X)
+    INVENTORY_Y = (450, 450)
+    POINTS100_X = (50, 50+PLAYER2_DELTA_X)
+    POINTS100_SPEED_DIRECTION = (1, -1)
 
 class KeyboardKeys:
     KEY_LEFT  = 65361
@@ -59,7 +64,8 @@ class SkidMarks:
 
 
 class CarModels:
-    GALLARDO = cairo.ImageSurface.create_from_png("gallardo.png")
+    GALLARDO_PLAYER1 = cairo.ImageSurface.create_from_png("./gallardo_player1.png")
+    GALLARDO_PLAYER2 = cairo.ImageSurface.create_from_png("./gallardo_player2.png")
     CORVETTE = cairo.ImageSurface.create_from_png("corvette.png")
     AMBULANCE = cairo.ImageSurface.create_from_png("emergency.png")
     CHARGER = cairo.ImageSurface.create_from_png("./charger.png")
@@ -117,20 +123,20 @@ class PointsEmitter(ParticleManager.ParticleEmitter):
             particle.set_properties(self.x, self.y, 700, 0, self.speed_x + random.randrange(-5, 5)*Speed.ONE_KMH, self.speed_y + random.randrange(-5, 5)*Speed.ONE_KMH,  self.size, self.shape, True)
 
 class Minus10Points(PointsEmitter):
-    def __init__(self, x, y, speed_x, speed_y, size=100, shape=ParticleManager.Particles.POINTS):
-        super(Minus10Points, self).__init__(x, y, speed_x, speed_y, size, shape, 0.01)
+    def __init__(self, x, y, speed_x, speed_y, size=100, shape=ParticleManager.Particles.POINTS, num_of_particles=6):
+        super(Minus10Points, self).__init__(x, y, speed_x, speed_y, size, shape, 0.01, num_of_particles)
     def set_particles(self):
         for particle in self.particles:
             particle.set_properties(self.x, self.y, 800, 0, self.speed_x + random.randrange(-5, 5)*Speed.ONE_KMH, self.speed_y + random.randrange(-5, 5)*Speed.ONE_KMH,  self.size, self.shape, True)
 
 
 class Plus100Points(PointsEmitter):
-    def __init__(self):
-        super(Plus100Points, self).__init__(50, 130, Speed.MAX_KMH*Speed.ONE_KMH, 0.1, 200, ParticleManager.Particles.PLUS_100_POINTS, 1, 1)
+    def __init__(self, x, speed):
+        super(Plus100Points, self).__init__(x, 130, speed, 0.1, 200, ParticleManager.Particles.PLUS_100_POINTS, 1, 1)
 
 class Minus100Points(PointsEmitter):
-    def __init__(self):
-        super(Minus100Points, self).__init__(50, 130, Speed.MAX_KMH*Speed.ONE_KMH, 0.1, 400, ParticleManager.Particles.MINUS_100_POINTS, 1, 1)
+    def __init__(self, x, speed):
+        super(Minus100Points, self).__init__(x, 130, speed,  0.1, 400, ParticleManager.Particles.MINUS_100_POINTS, 1, 1)
 
 class MessageEmitter(ParticleManager.ParticleEmitter):
     def __init__(self, x, y, shape):
@@ -206,8 +212,9 @@ class Car:
 
 
 class Player(Car):
-    def __init__(self, model, x, y, speed):
+    def __init__(self, model, x, y, speed, player_id):
         super(Player, self).__init__(model, x, y, speed)
+        self.player_id = player_id
         self.draw_rotation = False
         self.up = False
         self.down = False
@@ -228,12 +235,12 @@ class Player(Car):
 
     def update(self, time_delta):
         for i in range(self.score_hundreds - int(self.score / 100)):
-            ParticleManager.add_new_emmitter(Minus100Points())
+            ParticleManager.add_new_emmitter(Minus100Points(HUD.POINTS100_X[self.player_id], HUD.POINTS100_SPEED_DIRECTION[self.player_id]*Speed.MAX_SPEED))
         self.score += 0.01 * time_delta
         old_score_hundreds = self.score_hundreds
         self.score_hundreds = int(self.score / 100)
         for i in range(self.score_hundreds-old_score_hundreds):
-            ParticleManager.add_new_emmitter(Plus100Points())
+            ParticleManager.add_new_emmitter(Plus100Points(HUD.POINTS100_X[self.player_id], HUD.POINTS100_SPEED_DIRECTION[self.player_id]*Speed.MAX_SPEED))
         #Adjust postition to user input
         if self.up and self.vertical_position > RoadPositions.UPPER_LIMIT + self.height_offset:
             self.vertical_position -= 5
@@ -311,7 +318,7 @@ class Player(Car):
             cr.set_source_rgb(1, 0, 0)
         cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
         cr.set_font_size(20)
-        cr.move_to(Window.SCORE_POS_X, Window.SCORE_POS_Y)
+        cr.move_to(HUD.SCORE_POS_X[self.player_id], HUD.SCORE_POS_Y[self.player_id])
         cr.show_text("SCORE: " + str(int(self.score)))
 
     def draw_power_up_timer(self, cr):
@@ -324,14 +331,14 @@ class Player(Car):
             cr.set_source_rgb(1, 0, 0)
         cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
         cr.set_font_size(20)
-        cr.move_to(Window.TIME_OUT_POS_X, Window.TIME_OUT_POS_Y)
+        cr.move_to(HUD.TIME_OUT_POS_X[self.player_id], HUD.TIME_OUT_POS_Y[self.player_id])
         cr.show_text("0:" + str(time_out_seconds))
 
     def draw_inventory(self, cr):
         for i in range(PowerUps.INVENTORY_SIZE):
             cr.save()
-            x = Window.INVENTORY_X+PowerUps.ICON_SIZE*i
-            cr.translate(x, Window.INVENTORY_Y)
+            x = HUD.INVENTORY_X[self.player_id]+PowerUps.ICON_SIZE*i
+            cr.translate(x, HUD.INVENTORY_Y[self.player_id])
             if i < len(self.inventory):
                 cr.set_source_surface(self.inventory[i].icon, 0, 0)
             else:
@@ -350,7 +357,7 @@ class Player(Car):
                 cr.set_source_rgb(1, 0, 0)
             cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
             cr.set_font_size(14)
-            cr.move_to(x + (PowerUps.ICON_SIZE/2)-7, Window.INVENTORY_Y+PowerUps.ICON_SIZE+20)
+            cr.move_to(x + (PowerUps.ICON_SIZE/2)-7, HUD.INVENTORY_Y[self.player_id]+PowerUps.ICON_SIZE+20)
             cr.show_text(str(i+1))
 
     def addPowerUp(self, powerup):
@@ -571,7 +578,10 @@ class PlayerCrashHandler:
         self.timeout = 1700
 
     def calculateSpeedDecrease(self, impact_speed, mass):
-        speedDecrease = Speed.BASE_CRASH_SPEED_DECREASE * impact_speed*mass
+        if(impact_speed < 0.1):
+            speedDecrease = Speed.BASE_CRASH_SPEED_DECREASE
+        else:
+            speedDecrease = Speed.BASE_CRASH_SPEED_DECREASE * impact_speed*mass
         if self.player.speed - speedDecrease <= 0:
             return self.player.speed
         else:
@@ -718,7 +728,9 @@ class Game(Gtk.Window):
         self.players = []
         self.droped_items = []
 
-        self.players.append(Player(CarModels.GALLARDO, 0, RoadPositions.MIDDLE_LANE, Speed.MAX_KMH*Speed.ONE_KMH))
+        self.players.append(Player(CarModels.GALLARDO_PLAYER1 , 0, RoadPositions.LEFT_LANE, Speed.MAX_SPEED, 0))
+        
+        self.players.append(Player(CarModels.GALLARDO_PLAYER2 , 0, RoadPositions.RIGHT_LANE, Speed.MAX_SPEED, 1))
 
         #self.players[0].addPowerUp(Call911(self, self.players[0]))
         #self.players[0].addPowerUp(Hydraulics(self, self.players[0]))
@@ -810,7 +822,7 @@ class Game(Gtk.Window):
                     if not player.shield:
                         if not npv.crashed:
                             ParticleManager.add_new_emmitter(Minus10Points(player.horizontal_position, player.vertical_position, -player.speed, 0.2))
-                            player.score -= 30
+                            player.score -= 60
                             if(player.crash_handler == None):
                                 player.crash_handler = PlayerCrashHandler(player, npv.speed)
                     if not npv.crashed:
@@ -820,14 +832,27 @@ class Game(Gtk.Window):
                     if self.check_collision(player.horizontal_position, player.vertical_position, RoadPositions.COLLISION_HORIZON, player.height, npv.horizontal_position, npv.vertical_position, npv.width, npv.height):
                         ParticleManager.add_new_emmitter(SmokeEmitter( npv.horizontal_position, npv.vertical_position-npv.height_offset, 0, 0))
                         self.npvs.remove(npv)
-            if player.crash_handler != None:
-                player.crash_handler.update(time_delta)
 
         #(between non-players themselves)
         for i in range(len(self.npvs) - 1):
             for j in range(i+1, len(self.npvs)):
                 if self.check_collision(self.npvs[i].horizontal_position, self.npvs[i].vertical_position, self.npvs[i].width, self.npvs[i].height, self.npvs[j].horizontal_position, self.npvs[j].vertical_position, self.npvs[j].width, self.npvs[j].height):
                     self.npv_collision(self.npvs[i], self.npvs[j])
+
+
+        #between players
+        for i in range(len(self.players) - 1):
+            for j in range(i+1, len(self.players)):
+                if self.players[i].hydraulics or self.players[j].hydraulics:
+                    continue
+                if self.check_collision(self.players[i].horizontal_position, self.players[i].vertical_position, self.players[i].height, self.players[i].width, 
+                                        self.players[j].horizontal_position, self.players[j].vertical_position, self.players[j].height, self.players[j].width):
+                    if(self.players[i].crash_handler == None and not self.players[i].shield):
+                        self.players[i].crash_handler = PlayerCrashHandler(self.players[i], self.players[j].speed)
+                    if(self.players[j].crash_handler == None and not self.players[j].shield):
+                        self.players[j].crash_handler = PlayerCrashHandler(self.players[j], self.players[i].speed)
+
+
 
         #Update Particle Emitters
         ParticleManager.update(time_delta)
@@ -856,6 +881,10 @@ class Game(Gtk.Window):
 
         for item in self.droped_items:
             item.update(time_delta)
+            
+        for player in self.players:    
+            if player.crash_handler != None:
+                player.crash_handler.update(time_delta)
 
         self.last_update_timestamp = current_time
         self.darea.queue_draw()
