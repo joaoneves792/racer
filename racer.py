@@ -11,7 +11,7 @@ class Window:
     WIDTH = 1024
     HEIGHT = 512
     
-    VERSION = "v1.7"
+    VERSION = "v2.0"
 
 class HUD:
     PLAYER2_DELTA_X = 800
@@ -25,13 +25,14 @@ class HUD:
     POINTS100_SPEED_DIRECTION = (1, -1)
 
 class KeyboardKeys:
-    KEY_LEFT  = 65361
-    KEY_RIGHT = 65363
-    KEY_UP = 65362
-    KEY_DOWN = 65364
-    KEY_ONE = 49
-    KEY_FIVE = 54
-    KEY_TO_NUM = KEY_ONE - 1
+    KEY_ESC = 65307
+    KEY_LEFT  = (65361, 97)
+    KEY_RIGHT = (65363,100)
+    KEY_UP = (65362, 119)
+    KEY_DOWN = (65364, 115)
+    KEY_ONE = (49, 65457)
+    KEY_FIVE = (54, 65461)
+    KEY_TO_NUM = (KEY_ONE[0] - 1, KEY_ONE[1] - 1)
 
 class RoadPositions:
     UPPER_LIMIT = 105
@@ -543,10 +544,15 @@ class Truck(NPV):
     def __init__(self, model, y, speed, game):
             super(Truck, self).__init__(model, y, speed)
             self.game = game
+            self.looted = False
 
     def update(self, time_delta, player_speed):
         if(self.horizontal_position < RoadPositions.FORWARD_LIMIT and random.randrange(200) == 1):
             self.dropPowerUp()
+        if self.crashed and not self.looted:
+            self.dropPowerUp()
+            self.dropPowerUp()
+            self.looted = True
         super(Truck, self).update(time_delta, player_speed)
 
     def dropPowerUp(self):
@@ -591,15 +597,15 @@ class PlayerCrashHandler:
         #jolt = 20**(1+(impact_speed*mass*100)) #TODO Make me better
         jolt = 20
         if (random.randrange(2) == 0):
-            if self.player.vertical_position > RoadPositions.UPPER_LIMIT+jolt: 
+            if self.player.vertical_position > RoadPositions.UPPER_LIMIT+jolt+self.player.height_offset: 
                 return -jolt 
             else:
-                return RoadPositions.UPPER_LIMIT - self.player.vertical_position
+                return RoadPositions.UPPER_LIMIT + self.player.height_offset - self.player.vertical_position
         else:
-            if self.player.vertical_position < RoadPositions.LOWER_LIMIT-jolt:
+            if self.player.vertical_position < RoadPositions.LOWER_LIMIT-jolt-self.player.height_offset:
                 return jolt
             else:
-                return RoadPositions.LOWER_LIMIT - self.player.vertical_position
+                return RoadPositions.LOWER_LIMIT - self.player.height_offset - self.player.vertical_position
 
     def update(self, time_delta):
         if(self.player.speed >= Speed.MAX_KMH*Speed.ONE_KMH):
@@ -727,35 +733,73 @@ class Game(Gtk.Window):
         self.spawn_delay = 0
         self.players = []
         self.droped_items = []
+        self.paused = True
+        self.singlePlayer = True
 
-        self.players.append(Player(CarModels.GALLARDO_PLAYER1 , 0, RoadPositions.LEFT_LANE, Speed.MAX_SPEED, 0))
-        
-        self.players.append(Player(CarModels.GALLARDO_PLAYER2 , 0, RoadPositions.RIGHT_LANE, Speed.MAX_SPEED, 1))
 
         #self.players[0].addPowerUp(Call911(self, self.players[0]))
         #self.players[0].addPowerUp(Hydraulics(self, self.players[0]))
         #self.players[0].addPowerUp(Shield(self, self.players[0]))
         #self.players[0].addPowerUp(Call911(self, self.players[0]))
 
-        self.add_tick_callback(self.update)
 
     def init_ui(self):
+        self.grid = Gtk.Grid()
+        box = Gtk.Box()
+
+        play_button = Gtk.Button(label="Play")
+        play_button.connect("clicked", self.start_new_game)
+        single_multi_player = Gtk.ComboBoxText()
+        single_multi_player.append_text("Singleplayer")
+        single_multi_player.append_text("Multiplayer")
+        single_multi_player.set_active(0)
+        single_multi_player.connect("changed", self.changed_num_of_players)
+        
+        box.pack_start(single_multi_player, False, False, 0)
+        box.pack_end(play_button, False, False, 0)
+        
+        self.grid.add(box)
+
+        self.grid.set_orientation(Gtk.Orientation.VERTICAL)
+
+        image = Gtk.Image.new_from_file("./Screenshot.png")
+        
+        self.grid.add(image)
+
         self.darea = Gtk.DrawingArea()
-        self.darea.connect("draw", self.on_draw)
-        self.add(self.darea)
         self.set_title("GENERIC RACER!!! " + Window.VERSION)
         self.set_position(Gtk.WindowPosition.CENTER)
 
         self.resize(Window.WIDTH, Window.HEIGHT)
         self.set_size_request(Window.WIDTH, Window.HEIGHT)
         self.connect("delete-event", Gtk.main_quit)
+        self.add(self.grid)
+        self.show_all()
+        self.set_resizable(False)
+  
+    def start_new_game(self, button):
+        self.remove(self.grid)
+        self.add(self.darea)
+        self.show_all() 
+        self.players.append(Player(CarModels.GALLARDO_PLAYER1 , 0, RoadPositions.LEFT_LANE, Speed.MAX_SPEED, 0))
+        if self.singlePlayer == False:
+            self.players.append(Player(CarModels.GALLARDO_PLAYER2 , 0, RoadPositions.RIGHT_LANE, Speed.MAX_SPEED, 1))
+        self.darea.connect("draw", self.on_draw)
+        self.add_tick_callback(self.update)
         self.add_events(Gdk.EventMask.KEY_PRESS_MASK)
         self.add_events(Gdk.EventMask.KEY_RELEASE_MASK)
         self.connect("key-press-event", self.on_key_press)
         self.connect("key-release-event", self.on_key_release)
-        self.show_all()
-        self.set_resizable(False)
-   
+        self.paused = False
+
+
+    def changed_num_of_players(self, combo):
+        text = combo.get_active_text()
+        if text == "Singleplayer":
+            self.singlePlayer = True
+        else:
+            self.singlePlayer = False
+
     def generateEmergencyVehicle(self, vertical_position):
             self.npvs.append(NPV(CarModels.EMERGENCY_CARS[random.randrange(len(CarModels.EMERGENCY_CARS))], vertical_position, -20*Speed.ONE_KMH))
 
@@ -786,6 +830,10 @@ class Game(Gtk.Window):
         if self.last_update_timestamp == -1:
             self.last_update_timestamp = current_time
         time_delta = (current_time - self.last_update_timestamp)/1000 # frame time is in microseconds, we want miliseconds
+
+        if self.paused:
+            self.last_update_timestamp = current_time
+            return True
 
         self.road.advance(time_delta*Speed.MAX_SPEED) #self.speed)
 
@@ -931,31 +979,31 @@ class Game(Gtk.Window):
 
     def on_key_press(self, wid, event):
         if event.type == Gdk.EventType.KEY_PRESS:
-            if len(self.players) > 0:
-                if event.keyval == KeyboardKeys.KEY_LEFT: 
-                    self.players[0].braking = True
-                elif event.keyval == KeyboardKeys.KEY_RIGHT:
-                    self.players[0].forward = True
-                elif event.keyval == KeyboardKeys.KEY_UP: 
-                    self.players[0].up = True
-                elif event.keyval == KeyboardKeys.KEY_DOWN:
-                    self.players[0].down = True
-                elif event.keyval >= KeyboardKeys.KEY_ONE and event.keyval <= KeyboardKeys.KEY_FIVE:
-                    self.players[0].usePowerUp(event.keyval-KeyboardKeys.KEY_TO_NUM)
-                elif event.keyval == 115:
-                    self.players[0].fire_phaser = True
+            if event.keyval == KeyboardKeys.KEY_ESC:
+                self.paused = not self.paused
+            for i in range(len(self.players)):
+                if event.keyval == KeyboardKeys.KEY_LEFT[i]: 
+                    self.players[i].braking = True
+                elif event.keyval == KeyboardKeys.KEY_RIGHT[i]:
+                    self.players[i].forward = True
+                elif event.keyval == KeyboardKeys.KEY_UP[i]: 
+                    self.players[i].up = True
+                elif event.keyval == KeyboardKeys.KEY_DOWN[i]:
+                    self.players[i].down = True
+                elif event.keyval >= KeyboardKeys.KEY_ONE[i] and event.keyval <= KeyboardKeys.KEY_FIVE[i]:
+                    self.players[i].usePowerUp(event.keyval-KeyboardKeys.KEY_TO_NUM[i])
 
     def on_key_release(self, wid, event):
         if event.type == Gdk.EventType.KEY_RELEASE:
-            if len(self.players) > 0:
-                if event.keyval == KeyboardKeys.KEY_LEFT:
-                    self.players[0].braking = False
-                elif event.keyval == KeyboardKeys.KEY_RIGHT:
-                    self.players[0].forward = False
-                elif event.keyval == KeyboardKeys.KEY_UP: 
-                    self.players[0].up = False
-                elif event.keyval == KeyboardKeys.KEY_DOWN:
-                    self.players[0].down = False
+            for i in range(len(self.players)):
+                if event.keyval == KeyboardKeys.KEY_LEFT[i]:
+                    self.players[i].braking = False
+                elif event.keyval == KeyboardKeys.KEY_RIGHT[i]:
+                    self.players[i].forward = False
+                elif event.keyval == KeyboardKeys.KEY_UP[i]: 
+                    self.players[i].up = False
+                elif event.keyval == KeyboardKeys.KEY_DOWN[i]:
+                    self.players[i].down = False
 
-app = Game()
+game = Game()
 Gtk.main()
