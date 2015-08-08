@@ -244,14 +244,14 @@ class Player(Car):
             ParticleManager.add_new_emmitter(Plus100Points(HUD.POINTS100_X[self.player_id], HUD.POINTS100_SPEED_DIRECTION[self.player_id]*Speed.MAX_SPEED))
         #Adjust postition to user input
         if self.up and self.vertical_position > RoadPositions.UPPER_LIMIT + self.height_offset:
-            self.vertical_position -= 5
+            self.vertical_position -= 5 if not self.shrunk else 2
         elif self.down and self.vertical_position < RoadPositions.LOWER_LIMIT - self.height_offset:
-            self.vertical_position += 5
+            self.vertical_position += 5 if not self.shrunk else 2
         
         if self.forward and self.horizontal_position < RoadPositions.FORWARD_LIMIT:
-            self.horizontal_position += 5
+            self.horizontal_position += 5 if not self.shrunk else 2
         elif self.braking and self.horizontal_position > RoadPositions.REAR_LIMIT:
-            self.horizontal_position -= 5
+            self.horizontal_position -= 5 if not self.shrunk else 2
 
         if self.speed < Speed.MAX_SPEED:
             displacement = (Speed.MAX_SPEED - self.speed)*time_delta
